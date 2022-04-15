@@ -1,8 +1,0 @@
-#Destination:Cloud Edge Mist
-#Latency:High Medium Low
-#WanUsage:High Medium Low
-#TaskLength:High Medium Low
-#Mob:High Medium Low
-#EdgeUsage:High Medium Low
-@Offload:High Medium Low
-=Data=

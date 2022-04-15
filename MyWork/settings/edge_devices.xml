@@ -7,7 +7,7 @@
 
 	<device arch="x86" os="linux" vmm="xen">
 		<!-- this is a smartphone, for example -->
-		<connectivity>cellular</connectivity> <!-- the type of network connection -->
+		<connectivity>wifi</connectivity> <!-- the type of network connection -->
 		<mobility>true</mobility> <!-- the device is mobile or fixed -->
 		<speed>1.4</speed> <!-- the speed of the device in meters per second : 1.4m/s equals 5km/h, 0 = non mobile-->
 		<minPauseDuration>100</minPauseDuration> <!-- the minimum delay before moving to a new location-->
@@ -30,7 +30,7 @@
 	</device>
 	<device arch="x86" os="linux" vmm="xen">
 		<!-- this is a raspberry pi model B+-->
-		<connectivity>cellular</connectivity>
+		<connectivity>wifi</connectivity>
 		<mobility>false</mobility>
 		<speed>0</speed>
 		<minPauseDuration>0</minPauseDuration>
@@ -51,7 +51,7 @@
 	</device>
 	<device arch="x86" os="linux" vmm="xen">
 		<!--  this is a laptop for example -->
-		<connectivity>cellular</connectivity>
+		<connectivity>wifi</connectivity>
 		<mobility>false</mobility>
 		<speed>0</speed>
 		<minPauseDuration>0</minPauseDuration>
@@ -71,7 +71,7 @@
 		<storage>256</storage> <!--256MB of caching memory used in example 6 -->
 	</device>
 	<device arch="x86" os="linux" vmm="xen">
-		<connectivity>cellular</connectivity>
+		<connectivity>wifi</connectivity>
 		<mobility>false</mobility>
 		<speed>0</speed>
 		<minPauseDuration>0</minPauseDuration>
