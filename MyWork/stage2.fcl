@@ -3,8 +3,8 @@ FUNCTION_BLOCK tipper
 
 // Define input variables
 VAR_INPUT 
-    vm_local : REAL;
-	vm : REAL;
+    originUsage : REAL;
+	destinationUsage : REAL;
 END_VAR
 
 // Define output variable
@@ -12,15 +12,15 @@ VAR_OUTPUT
     offload : REAL;
 END_VAR
 
-// Fuzzify input variable 'vm_local'
-FUZZIFY vm_local
+// Fuzzify input variable 'originUsage'
+FUZZIFY originUsage
     TERM low := (0, 1) (20, 1) (40,0) ;
     TERM medium := (30,0) (50,1) (70,0);
     TERM high := (60,0) (80,1)(120,1);
 END_FUZZIFY
 
-// Fuzzify input variable 'vm'
-FUZZIFY vm
+// Fuzzify input variable 'destinationUsage'
+FUZZIFY destinationUsage
     TERM low := (0, 1) (20, 1) (40,0) ;
     TERM medium := (30,0) (50,1) (70,0);
     TERM high := (60,0) (80,1)(120,1);
@@ -45,13 +45,13 @@ RULEBLOCK No1
     // Use 'max' accumulation method
     ACCU : MAX;
 
-    RULE 1 : IF vm_local IS low AND vm IS high
+    RULE 1 : IF originUsage IS low AND destinationUsage IS high
                 THEN offload IS yes;
 				
-	RULE 2 : IF vm_local IS low AND vm IS high
+	RULE 2 : IF originUsage IS low AND destinationUsage IS high
                 THEN offload IS yes;
 	
-	RULE 3 : IF vm_local IS low AND vm IS medium
+	RULE 3 : IF originUsage IS low AND destinationUsage IS medium
                 THEN offload IS yes;
 
 END_RULEBLOCK

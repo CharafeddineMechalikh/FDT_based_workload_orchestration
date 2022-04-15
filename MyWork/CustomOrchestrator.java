@@ -10,15 +10,13 @@ import java.io.IOException;
 import java.util.Random;
 import java.util.Vector;
 
-import org.cloudbus.cloudsim.cloudlets.Cloudlet.Status;
-
-import com.mechalikh.pureedgesim.DataCentersManager.DataCenter;
-import com.mechalikh.pureedgesim.ScenarioManager.SimulationParameters;
-import com.mechalikh.pureedgesim.ScenarioManager.SimulationParameters.TYPES;
-import com.mechalikh.pureedgesim.SimulationManager.SimLog;
-import com.mechalikh.pureedgesim.SimulationManager.SimulationManager;
-import com.mechalikh.pureedgesim.TasksGenerator.Task;
-import com.mechalikh.pureedgesim.TasksOrchestration.Orchestrator;
+import com.mechalikh.pureedgesim.datacentersmanager.ComputingNode;
+import com.mechalikh.pureedgesim.scenariomanager.SimulationParameters;
+import com.mechalikh.pureedgesim.scenariomanager.SimulationParameters.TYPES; 
+import com.mechalikh.pureedgesim.simulationmanager.SimulationManager;
+import com.mechalikh.pureedgesim.tasksgenerator.Task;
+import com.mechalikh.pureedgesim.tasksgenerator.Task.Status;
+import com.mechalikh.pureedgesim.tasksorchestration.DefaultOrchestrator;
 
 import net.sourceforge.jFuzzyLogic.FIS;
 import src.com.fdtkit.fuzzy.data.Attribute;
@@ -45,7 +43,7 @@ import src.com.fdtkit.fuzzy.utils.PreferenceMeasure;
  * @author Mechalikh
  * 
  */
-public class CustomOrchestrator extends Orchestrator {
+public class CustomOrchestrator extends DefaultOrchestrator {
 
 	/** Fuzzy decision tree algorithm variables **/
 	// stage 1 decision tree (root)
@@ -72,7 +70,7 @@ public class CustomOrchestrator extends Orchestrator {
 	}
 
 	@Override
-	protected int findVM(String[] architecture, Task task) {
+	protected int findComputingNode(String[] architecture, Task task) {
 		// if the selected algorithm is the fuzzy decision tree-based one.
 		if (simulationManager.getScenario().getStringOrchAlgorithm().equals("FDT"))
 			try {
@@ -103,13 +101,14 @@ public class CustomOrchestrator extends Orchestrator {
 			}
 			return FuzzyLogic(architecture, task);
 		} else {
+		/*	super.findComputingNode(architecture, task);
 			SimLog.println("");
 			SimLog.println("Custom Orchestrator- Unknnown orchestration algorithm '" + algorithm
 					+ "', please check the simulation parameters file...");
 			// Cancel the simulation
-			Runtime.getRuntime().exit(0);
+			Runtime.getRuntime().exit(0);*/
 		}
-		return -1;
+		return super.findComputingNode(architecture, task);
 	}
 
 	private int DecisionTree(String[] architecture, Task task) throws Exception {
@@ -120,46 +119,41 @@ public class CustomOrchestrator extends Orchestrator {
 		// Fuzzification of input variables
 		double[] lat = getLat(task.getMaxLatency());
 		double[] tasklength = getTaskLength(task.getLength());
-		double[] wanusage = getWanUsage(simulationManager.getNetworkModel().getWanUtilization());
-		double[] mobi = getMobi(task.getEdgeDevice().getMobilityManager().isMobile());
+		double[] wanusage = getWanUsage(simulationManager.getNetworkModel().getWanUpUtilization());
+		double[] mobi = getMobi(task.getEdgeDevice().getMobilityModel().isMobile());
 
 		// Get average edge data centers resource utilization
-		double vmUsage = 0;
-		double count = 0;
-		for (int i = 0; i < vmList.size(); i++) {
-			if (((DataCenter) vmList.get(i).getHost().getDatacenter())
-					.getType() == SimulationParameters.TYPES.EDGE_DATACENTER) {
-				vmUsage += ((DataCenter) vmList.get(i).getHost().getDatacenter()).getResources()
-						.getCurrentCpuUtilization();
-				count++;
-			}
+		double nodeUsage = 0;
+		for (int i = 0; i < SimulationParameters.NUM_OF_EDGE_DATACENTERS; i++) {
+			nodeUsage += simulationManager.getDataCentersManager().getEdgeDatacenterList().get(i)
+					.getCurrentCpuUtilization();
 		}
-		vmUsage = vmUsage / count;
-		double[] destusage = getDesCPUusage(vmUsage * 15);
+		nodeUsage /= SimulationParameters.NUM_OF_EDGE_DATACENTERS;
+		double[] edgeUsage = getDesCPUusage(nodeUsage * 50);
 
 		// save the rule used for the classification of this task, in oder to use it
 		// later when updating the Q values
 		rule = getLatTerm(task.getMaxLatency()) + ","
-				+ getWanUsageTerm(simulationManager.getNetworkModel().getWanUtilization()) + ","
+				+ getWanUsageTerm(simulationManager.getNetworkModel().getWanUpUtilization()) + ","
 				+ getTaskLengthTerm(task.getLength()) + ","
-				+ (task.getEdgeDevice().getMobilityManager().isMobile() ? "high" : "low") + ","
-				+ getDesCPUUsageTerm(vmUsage * 15);
+				+ (task.getEdgeDevice().getMobilityModel().isMobile() ? "high" : "low") + ","
+				+ getDesCPUUsageTerm(nodeUsage * 50);
 
 		int action;
 		double random = new Random().nextFloat();
-		if (random <= 6 / simulationManager.getSimulation().clock()) { // explore
+		if (random <= 10 / simulationManager.getSimulation().clock()) { // explore
 			action = new Random().nextInt(3); // pickup a random action (between cloud, edge, or mist)
 		} else {// exploit
 			// classify the state+ action "cloud"
-			Dataset d = getDataset("cloud", lat, wanusage, tasklength, mobi, destusage);
+			Dataset d = getDataset("cloud", lat, wanusage, tasklength, mobi, edgeUsage);
 			double[] cVals_cloud = fuzzydecisionTree.classify(0, d, "Offload", fuzzydecisionTree.generateRules(root));
 
 			// classify the state+ action "edge"
-			Dataset d2 = getDataset("edge", lat, wanusage, tasklength, mobi, destusage);
+			Dataset d2 = getDataset("edge", lat, wanusage, tasklength, mobi, edgeUsage);
 			double[] cVals_edge = fuzzydecisionTree.classify(0, d2, "Offload", fuzzydecisionTree.generateRules(root));
 
 			// classify the state+ action "mist"
-			Dataset d3 = getDataset("mist", lat, wanusage, tasklength, mobi, destusage);
+			Dataset d3 = getDataset("mist", lat, wanusage, tasklength, mobi, edgeUsage);
 			double[] cVals_mist = fuzzydecisionTree.classify(0, d3, "Offload", fuzzydecisionTree.generateRules(root));
 
 			// compare the classification results and get the best action/ offloading
@@ -170,26 +164,23 @@ public class CustomOrchestrator extends Orchestrator {
 		if (action == 1) {// the cloud is the best action
 			rule = "cloud," + rule;
 			// save the rule in the task metadata for later use
-			task.setMetaData(new String[] { rule, "" });
+			((CustomComputingNode) task.getEdgeDevice()).setMetaData(new String[] { rule, "" });
 			// the offloading decision is the Cloud so offlaod the task to the cloud.
 			// to do this, we call another algorithm, and tell it to use the cloud-only
-			// architecture, in order to get the best cloud vm
-
+			// architecture, in order to get the best cloud data center
 			String[] architecture2 = { "Cloud" };
 			return LatencyAndEnergyAware(architecture2, task);
 		} else if (action == 2) {
 			rule = "edge," + rule;
 			// save the rule in the task metadata for later use
-			task.setMetaData(new String[] { rule, "" });
-
-			// select best edge vm using another algorithm
+			((CustomComputingNode) task.getEdgeDevice()).setMetaData(new String[] { rule, "" });
+			// select best edge server using another algorithm
 			String[] architecture2 = { "Edge" };
 			return LatencyAndEnergyAware(architecture2, task);
 		} else {
 			rule = "mist," + rule;
 			// save the rule in the task metadata for later use
-			task.setMetaData(new String[] { rule, "" });
-
+			((CustomComputingNode) task.getEdgeDevice()).setMetaData(new String[] { rule, "" });
 			// enter to stage 2, and classify edge devices
 			String[] architecture2 = { "Mist" };
 			return Stage2decisiontree(architecture2, task);
@@ -198,48 +189,33 @@ public class CustomOrchestrator extends Orchestrator {
 	}
 
 	/**
-	 * this function compares the fuzzy output and returns the best action in stage
+	 * This function compares the fuzzy output and returns the best action in stage
 	 * 1
 	 **/
 	private int getDecision(double[] cVals_cloud, double[] cVals_edge, double[] cVals_mist) {
-		// compare the membership degrees of fuzzy set "high"
-		if (cVals_edge[0] >= cVals_cloud[0] && cVals_edge[0] > cVals_mist[0])
-			return 2; // edge
-		if (cVals_mist[0] >= cVals_cloud[0] && cVals_mist[0] >= cVals_edge[0])
-			return 3; // mist
-
-		// compare the membership degrees of fuzzy set "medium"
-		if (cVals_edge[1] >= cVals_cloud[1] && cVals_edge[1] > cVals_mist[1])
-			return 2; // edge
-		if (cVals_mist[1] >= cVals_cloud[1] && cVals_mist[1] >= cVals_edge[1])
-			return 3;// mist
-
-		// compare the membership degrees of fuzzy set "low"
-		if (cVals_edge[2] >= cVals_cloud[2] && cVals_edge[2] > cVals_mist[2])
-			return 2; // edge
-		if (cVals_mist[2] >= cVals_cloud[2] && cVals_mist[2] >= cVals_edge[2])
-			return 3;// mist
-
-		return 1; // cloud
-
+		// Compare the fuzzy output in order to get the best action
+		double mist = cVals_mist[0] * 3 + cVals_mist[1] * 2 + cVals_mist[2];
+		double edge = cVals_edge[0] * 3 + cVals_edge[1] * 2 + cVals_edge[2];
+		double cloud = cVals_cloud[0] * 3 + cVals_cloud[1] * 2 + cVals_cloud[2];
+		if (mist >= cloud && mist >= edge)
+			return 3;
+		if (edge >= cloud)
+			return 2;
+		return 1;
 	}
 
 	/** stage 2 of the proposed algorithm, which classifies the edge devices **/
-	private int Stage2decisiontree(String[] architecture2, Task task) throws Exception {
+	private int Stage2decisiontree(String[] architecture, Task task) throws Exception {
 		double max = -1;
-		int vm = -1;
+		int selected = -1;
 		String rule = "";
-		for (int i = 0; i < orchestrationHistory.size(); i++) {
-			if (offloadingIsPossible(task, vmList.get(i), architecture2)
-					&& vmList.get(i).getStorage().getCapacity() > 0) {
-
-				double[] destcpu = getDesCPU(
-						((DataCenter) vmList.get(i).getHost().getDatacenter()).getResources().getCurrentCpuUtilization()
-								* 100);
+		for (int i = 0; i < nodeList.size(); i++) {
+			if (offloadingIsPossible(task, nodeList.get(i), architecture)) {
+				ComputingNode edgeDevice = nodeList.get(i);
+				double[] destcpu = getDesCPU(edgeDevice.getCurrentCpuUtilization() * 100);
 				double[] tasklength = getTaskLength(task.getLength());
-				double[] destremai = getDestRemain((DataCenter) vmList.get(i).getHost().getDatacenter());
-				double[] desmobi = this.getDestMobi((DataCenter) vmList.get(i).getHost().getDatacenter(),
-						task.getEdgeDevice().getMobilityManager().isMobile());
+				double[] destremai = getDestRemain(edgeDevice);
+				double[] desmobi = getDestMobi(edgeDevice, task.getEdgeDevice().getMobilityModel().isMobile());
 				Dataset d2 = getDataset2(destcpu, tasklength, destremai, desmobi);
 
 				double[] cVals = fuzzydecisionTree2.classify(0, d2, "Offload", fuzzydecisionTree2.generateRules(root2));
@@ -247,13 +223,9 @@ public class CustomOrchestrator extends Orchestrator {
 				// to save the rule used to offload this task, this rule will be used later when
 				// updating the Q values
 				// the rule will be stored in the task metadata object for easy access
-				rule = getDesCPUTerm(
-						((DataCenter) vmList.get(i).getHost().getDatacenter()).getResources().getCurrentCpuUtilization()
-								* 100)
-						+ "," + getTaskLengthTerm(task.getLength()) + ","
-						+ getDestRemainTerm((DataCenter) vmList.get(i).getHost().getDatacenter()) + ","
-						+ getDestMobiTerm((DataCenter) vmList.get(i).getHost().getDatacenter(),
-								task.getEdgeDevice().getMobilityManager().isMobile());
+				rule = getDesCPUTerm(edgeDevice.getCurrentCpuUtilization() * 100) + ","
+						+ getTaskLengthTerm(task.getLength()) + "," + getDestRemainTerm(edgeDevice) + ","
+						+ getDestMobiTerm(edgeDevice, task.getEdgeDevice().getMobilityModel().isMobile());
 				// if the class = high, high = the expected success rate is high or the
 				// suitability of the device, so we should offload to this device
 				// cVals is an array in which the fuzzified values are stored.
@@ -264,8 +236,8 @@ public class CustomOrchestrator extends Orchestrator {
 					// if the membership degree of "high" is bigger than "medium"(
 					// cVals[0]>=cVals[1]) and if it is the first time (max==-1), or it is not the
 					// first time but the old max is below the membership degree of "high".
-					// then select the this device/vm as to execute the task
-					vm = i;
+					// then select the this computing node as to execute the task
+					selected = i;
 					// update the max value with the new membership degree of "high" fuzzy set
 					// if the wake it here, this means that we have found at least one device that
 					// is classifed as "high".This means that any other device that is classified as
@@ -283,34 +255,34 @@ public class CustomOrchestrator extends Orchestrator {
 				else if (cVals[1] >= cVals[2]) {
 					if (max == -1 || max < cVals[1] + 1) {
 						max = cVals[0] + 1;
-						vm = i;
+						selected = i;
 					}
 				} else {
 					// the class= low
 					if (max == -1 || max < cVals[2]) {
 						max = cVals[2];
-						vm = i;
+						selected = i;
 					}
 				}
 
 			}
 
 		}
-		if (vm != -1) {
-			String[] rules = (String[]) task.getMetaData();
+		if (selected != -1) {
+			String[] rules = (String[]) ((CustomComputingNode) task.getEdgeDevice()).getMetaData();
 			// save the second rule (used in stage 2)
 			rules[1] = rule;
 			// save the rule in the task metadata for later use
-			task.setMetaData(rules);
+			((CustomComputingNode) task.getEdgeDevice()).setMetaData(rules);
 			// return the offloading destination
-			return vm;
+			return selected;
 		} else {
 			// If the device moved away from the orchestrator, the task will fail. Unless it
 			// offloads it by itself.
 			// to do this we use another another algorithm to select the closest edge
 			// server. just in case.
-			String[] architecture = { "Edge" };
-			return LatencyAndEnergyAware(architecture, task);
+			String[] architecture2 = { "Edge" };
+			return LatencyAndEnergyAware(architecture2, task);
 		}
 	}
 
@@ -344,7 +316,7 @@ public class CustomOrchestrator extends Orchestrator {
 	}
 
 	private Dataset getDataset(String destination, double[] lat, double[] wanusage, double[] tasklength, double[] mobi,
-			double[] destusage) {
+			double[] edgeUsage) {
 		Dataset d = new Dataset("Sample1");
 
 		// Add the attributes with Linguistic terms
@@ -354,9 +326,9 @@ public class CustomOrchestrator extends Orchestrator {
 		d.addAttribute(new Attribute("WanUsage", new String[] { "High", "Medium", "Low" }));
 		d.addAttribute(new Attribute("TaskLength", new String[] { "High", "Medium", "Low" }));
 		d.addAttribute(new Attribute("Mob", new String[] { "High", "Medium", "Low" }));
-		d.addAttribute(new Attribute("DestUsage", new String[] { "High", "Medium", "Low" }));
+		d.addAttribute(new Attribute("EdgeUsage", new String[] { "High", "Medium", "Low" }));
 		d.addAttribute(new Attribute("Offload", new String[] { "High", "Medium", "Low" }));
-		double[][] columns = { getDestination(destination), lat, wanusage, tasklength, mobi, destusage, destusage };
+		double[][] columns = { getDestination(destination), lat, wanusage, tasklength, mobi, edgeUsage };
 
 		d.addRow(new Row(new Object[] { "Dummy", "Dummy", "Dummy", "Dummy", "Dummy", "Dummy", "Dummy" }, columns));
 
@@ -423,7 +395,7 @@ public class CustomOrchestrator extends Orchestrator {
 		LeafDeterminer leafDeterminer;
 		FuzzyDecisionTree descisionTree;
 		preferenceMeasure = new AmbiguityMeasure(0.5);
-		leafDeterminer = new LeafDeterminerBase(0.9);
+		leafDeterminer = new LeafDeterminerBase(0.95);
 
 		descisionTree = new FuzzyDecisionTree(preferenceMeasure, leafDeterminer);
 		if (stage == 1)
@@ -431,14 +403,20 @@ public class CustomOrchestrator extends Orchestrator {
 		else
 			root2 = descisionTree.buildTree(d);
 		// Uncomment to print fuzzy rules
-		/*
-		 * String[] rulesArray = descisionTree.generateRules(root); String rules = "";
-		 * for (String rule : rulesArray) rules += rule + "\r\n"; File file = new
-		 * File("PureEdgeSim/MyWork/readable_rules_1"); try { DataOutputStream outstream
-		 * = new DataOutputStream(new FileOutputStream(file, false));
-		 * outstream.write(rules.getBytes()); outstream.close(); } catch (IOException e)
-		 * { e.printStackTrace(); }
-		 */
+
+		String[] rulesArray = descisionTree.generateRules(root);
+		String rules = "";
+		for (String rule : rulesArray)
+			rules += rule + "\r\n";
+		File file = new File("PureEdgeSim/MyWork/readable_rules_1");
+		try {
+			DataOutputStream outstream = new DataOutputStream(new FileOutputStream(file, false));
+			outstream.write(rules.getBytes());
+			outstream.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
 		return descisionTree;
 	}
 
@@ -484,10 +462,10 @@ public class CustomOrchestrator extends Orchestrator {
 			return "medium";
 	}
 
-	private String getDestRemainTerm(DataCenter datacenter) {
+	private String getDestRemainTerm(ComputingNode node) {
 		double e;
-		if (datacenter.getEnergyModel().isBatteryPowered())
-			e = datacenter.getEnergyModel().getBatteryLevelPercentage();
+		if (node.getEnergyModel().isBatteryPowered())
+			e = node.getEnergyModel().getBatteryLevelPercentage();
 		else
 			e = 100;
 		if (e >= 75)
@@ -513,26 +491,26 @@ public class CustomOrchestrator extends Orchestrator {
 		return new double[] { 0.0, 1.0, 0.0 };
 	}
 
-	private double[] getDestMobi(DataCenter datacenter, boolean mobile) {
-		if (mobile && datacenter.getMobilityManager().isMobile())
+	private double[] getDestMobi(ComputingNode node, boolean mobile) {
+		if (mobile && node.getMobilityModel().isMobile())
 			return new double[] { 1.0, 0.0, 0.0 };
-		else if (mobile || datacenter.getMobilityManager().isMobile())
+		else if (mobile || node.getMobilityModel().isMobile())
 			return new double[] { 0.0, 1.0, 0.0 };
 		return new double[] { 0.0, 0.0, 1.0 };
 	}
 
-	private String getDestMobiTerm(DataCenter datacenter, boolean mobile) {
-		if (mobile && datacenter.getMobilityManager().isMobile())
+	private String getDestMobiTerm(ComputingNode node, boolean mobile) {
+		if (mobile && node.getMobilityModel().isMobile())
 			return "high";
-		else if (mobile || datacenter.getMobilityManager().isMobile())
+		else if (mobile || node.getMobilityModel().isMobile())
 			return "medium";
 		return "low";
 	}
 
-	private double[] getDestRemain(DataCenter datacenter) {
+	private double[] getDestRemain(ComputingNode node) {
 		double e;
-		if (datacenter.getEnergyModel().isBatteryPowered())
-			e = datacenter.getEnergyModel().getBatteryLevelPercentage();
+		if (node.getEnergyModel().isBatteryPowered())
+			e = node.getEnergyModel().getBatteryLevelPercentage();
 		else
 			e = 100;
 		double l = 0;
@@ -584,10 +562,10 @@ public class CustomOrchestrator extends Orchestrator {
 		return new double[] { (d - 10000) / 8000, (18000 - d) / 8000, 0.0 };
 	}
 
-	private String getTaskLengthTerm(long length) {
-		if (length <= 6000)
+	private String getTaskLengthTerm(double d) {
+		if (d <= 6000)
 			return "low";
-		else if (length >= 14000)
+		else if (d >= 14000)
 			return "high";
 		return "medium";
 	}
@@ -601,22 +579,21 @@ public class CustomOrchestrator extends Orchestrator {
 	/** the first stage of the fuzzy logic-based algorithm **/
 	private int FuzzyLogic(String[] architecture, Task task) {
 
-		double vmUsage = 0;
+		double nodeUsage = 0;
 		int count = 0;
-		for (int i = 0; i < vmList.size(); i++) {
-			if (((DataCenter) vmList.get(i).getHost().getDatacenter()).getType() != SimulationParameters.TYPES.CLOUD) {
+		for (int i = 0; i < nodeList.size(); i++) {
+			if (nodeList.get(i).getType() != SimulationParameters.TYPES.CLOUD) {
 				count++;
-				vmUsage += ((DataCenter) vmList.get(i).getHost().getDatacenter()).getResources()
-						.getCurrentCpuUtilization();
+				nodeUsage += nodeList.get(i).getCurrentCpuUtilization();
 
 			}
 		}
 		// Send the input variables to the fuzzy inference system
-		fis.setVariable("wan",
-				SimulationParameters.WAN_BANDWIDTH / 1000 - simulationManager.getNetworkModel().getWanUtilization());
+		fis.setVariable("wan", SimulationParameters.WAN_BANDWIDTH_BITS_PER_SECOND / 1000000
+				- simulationManager.getNetworkModel().getWanUpUtilization());
 		fis.setVariable("tasklength", task.getLength());
 		fis.setVariable("delay", task.getMaxLatency());
-		fis.setVariable("vm", vmUsage * 10 / count);
+		fis.setVariable("destinationUsage", nodeUsage * 10 / count);
 
 		// Evaluate
 		fis.evaluate();
@@ -634,16 +611,16 @@ public class CustomOrchestrator extends Orchestrator {
 
 	private int FuzzyLogicStage2(String[] architecture2, Task task) {
 		double min = -1;
-		int vm = -1;
+		int selected = -1;
 
-		for (int i = 0; i < vmList.size(); i++) {
-			if (offloadingIsPossible(task, vmList.get(i), architecture2)
-					&& vmList.get(i).getStorage().getCapacity() > 0) {
-				if (!task.getEdgeDevice().getMobilityManager().isMobile())
-					fis2.setVariable("vm_local", 0);
+		for (int i = 0; i < nodeList.size(); i++) {
+			if (offloadingIsPossible(task, nodeList.get(i), architecture2)) {
+				if (!task.getEdgeDevice().getMobilityModel().isMobile())
+					fis2.setVariable("originUsage", 0);
 				else
-					fis2.setVariable("vm_local", 0);
-				fis2.setVariable("vm", (1 - vmList.get(i).getCpuPercentUtilization()) * vmList.get(i).getMips() / 1000);
+					fis2.setVariable("originUsage", 0);
+				fis2.setVariable("destinationUsage",
+						(1 - nodeList.get(i).getAvgCpuUtilization()) * nodeList.get(i).getTotalMipsCapacity() / 1000);
 				fis2.evaluate();
 				// if (b) {
 				// fis2.chart();
@@ -651,47 +628,46 @@ public class CustomOrchestrator extends Orchestrator {
 				// }
 				if (min == -1 || min > fis2.getVariable("offload").defuzzify()) {
 					min = fis2.getVariable("offload").defuzzify();
-					vm = i;
+					selected = i;
 				}
 			}
 		}
-		return vm;
+		return selected;
 	}
 
 	private int LatencyAndEnergyAware(String[] architecture, Task task) {
-		int vm = -1;
+		int selected = -1;
 		double min = -1;
-		double new_min;// vm with minimum affected tasks;
-		// get best vm for this task
-		for (int i = 0; i < orchestrationHistory.size(); i++) {
-			if (offloadingIsPossible(task, vmList.get(i), architecture)
-					&& vmList.get(i).getStorage().getCapacity() > 0) {// &&
-				// vmList.get(i).getStorage().getCapacity()>0
+		double new_min;// selected with minimum affected tasks;
+		// get best selected for this task
+		for (int i = 0; i < nodeList.size(); i++) {
+			if (offloadingIsPossible(task, nodeList.get(i), architecture)) {
 				double latency = 1;
 				double energy = 1;
-				if (((DataCenter) vmList.get(i).getHost().getDatacenter())
-						.getType() == SimulationParameters.TYPES.CLOUD) {
+				if (nodeList.get(i).getType() == SimulationParameters.TYPES.CLOUD) {
 					latency = 1.6;
 					energy = 1.1;
-				} else if (((DataCenter) vmList.get(i).getHost().getDatacenter())
-						.getType() == SimulationParameters.TYPES.EDGE_DEVICE) {
+				} else if (nodeList.get(i).getType() == SimulationParameters.TYPES.EDGE_DEVICE) {
 					energy = 1.4;
 				}
-				new_min = (orchestrationHistory.get(i).size() + 1) * latency * energy * task.getLength()
-						/ vmList.get(i).getMips();
+				new_min = (historyMap.get(i) + 1) * latency * energy * task.getLength()
+						/ nodeList.get(i).getTotalMipsCapacity();
 				if (min == -1) { // if it is the first iteration
 					min = new_min;
-					// if this is the first time, set the first vm as the
-					vm = i; // best one
-				} else if (min > new_min) { // if this vm has more cpu mips and less waiting tasks
-					// idle vm, no tasks are waiting
+					// if this is the first time, set the first node as the
+					selected = i; // best one
+				} else if (min > new_min) { // if this computing node has more cpu mips and less waiting tasks
+					// idle selected, no tasks are waiting
 					min = new_min;
-					vm = i;
+					selected = i;
 				}
 			}
 		}
-		// affect the tasks to the vm found
-		return vm;
+		// affect the tasks to the selected node
+		if (selected != -1)
+			historyMap.put(selected, historyMap.get(selected) + 1);
+
+		return selected;
 	}
 
 	/** if the execution results of one of the offloaded task have been received **/
@@ -700,8 +676,8 @@ public class CustomOrchestrator extends Orchestrator {
 		try {
 			// if the used algorithm is called FDT (the fuzzy decision tree based algorithm)
 			if (simulationManager.getScenario().getStringOrchAlgorithm().equals("FDT")) {
-				// if the task has been successfully executed, consider it a reward. otherwise,
-				// a punishement
+				// if the task has been successfully executed, consider it a reward.
+				// otherwise,a punishment.
 				reinforcementRecieved(task, task.getStatus() == Status.SUCCESS, true);
 			}
 		} catch (IOException e) {
@@ -716,17 +692,19 @@ public class CustomOrchestrator extends Orchestrator {
 	 * fuzzy rules, that are used in classification.
 	 */
 	public void reinforcementRecieved(Task task, boolean reinforcement, boolean modify) throws IOException {
-		// get first rule from the array (the rule of stage 1)
-		String ruleToUpdate = ((String[]) task.getMetaData())[0];
+		// Get first rule from the array (the rule of stage 1)
+		String ruleToUpdate = ((String[]) ((CustomComputingNode) task.getEdgeDevice()).getMetaData())[0];
 		double reward = reinforcement ? 1 : 0;
-		if (((DataCenter) task.getVm().getHost().getDatacenter()).getMobilityManager().isMobile())
-			reward /= 2;
-
+		if (task.getOffloadingDestination().getEnergyModel().isBatteryPowered())
+			// Discount the reward by 10% if the offloading destination is a battery powered
+			// device, by doing so these devices will be avoided, unless the other possible
+			// actions are not suitable enough/risky
+			reward *= 0.85;
 		updateQTable(1, Q_Table, ruleToUpdate, reward);
 		// if the edge has been selected in stage 2
-		if (((DataCenter) task.getVm().getHost().getDatacenter()).getType() == TYPES.EDGE_DEVICE) {
+		if (task.getOffloadingDestination().getType() == TYPES.EDGE_DEVICE) {
 			// get the second rule from the array (the rule of stage 2)
-			ruleToUpdate = ((String[]) task.getMetaData())[1];
+			ruleToUpdate = ((String[]) ((CustomComputingNode) task.getEdgeDevice()).getMetaData())[1];
 			updateQTable(2, Q_Table2, ruleToUpdate, reward);
 		}
 	}
@@ -746,16 +724,17 @@ public class CustomOrchestrator extends Orchestrator {
 				// update Q-value
 				q_Table.get(i).incrementNumberOfReinforcements();
 
-				// set the threshold as 100 in order to deal with non-stationary Multi-Armed
+				// set the threshold as 500 in order to deal with non-stationary Multi-Armed
 				// Bandit problem
-				double k = Math.min(q_Table.get(i).getNumberOfReinforcements(), 100);
+				double k = Math.min(q_Table.get(i).getNumberOfReinforcements(), 50);
 				Q_value += 1 / k * (reinforcement - Q_value);
 				q_Table.get(i).setQ_value(Q_value);
 				break;
 			}
 		}
 		if (!found) {
-			Q_table_row row = new Q_table_row(ruleToUpdate, 1, 1);
+			// the Q values are set to optrimistic initial value of 1
+			Q_table_row row = new Q_table_row(ruleToUpdate, 1, reinforcement);
 			q_Table.add(row);
 		}
 
@@ -775,7 +754,7 @@ public class CustomOrchestrator extends Orchestrator {
 		if (stage == 1) {
 			rules += "#Destination:Cloud Edge Mist\r\n" + "#Latency:High Medium Low\r\n"
 					+ "#WanUsage:High Medium Low\r\n" + "#TaskLength:High Medium Low\r\n" + "#Mob:High Medium Low\r\n"
-					+ "#DestUsage:High Medium Low\r\n" + "@Offload:High Medium Low\r\n" + "=Data=";
+					+ "#EdgeUsage:High Medium Low\r\n" + "@Offload:High Medium Low\r\n" + "=Data=";
 		} else {
 			rules += "#DestCPU:High Medium Low\r\n" + "#TaskLength:High Medium Low\r\n" + "#DestRem:High Medium Low\r\n"
 					+ "#DestMob:High Medium Low\r\n" + "@Offload:High Medium Low\r\n" + "=Data=";
@@ -801,15 +780,15 @@ public class CustomOrchestrator extends Orchestrator {
 		if (stage == 2)
 			return fuzzify(row.getQ_value());
 
+		// To store the maximum Q value for a given state
 		double max = 0;
 		for (int i = 0; i < q_Table.size(); i++) {
 			if (q_Table.get(i).getQ_value() > max && compare(q_Table.get(i).getRule(), row.getRule()))
 				max = q_Table.get(i).getQ_value();
 		}
-		double new_Q_value = 0;
+		double new_Q_value = row.getQ_value();
 		if (max != 0)
 			new_Q_value = 1 - ((max - row.getQ_value()) / max);
-
 		return fuzzify(new_Q_value);
 	}
 
