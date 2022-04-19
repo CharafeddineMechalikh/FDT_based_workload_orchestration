@@ -12,11 +12,11 @@ import java.util.Vector;
 
 import com.mechalikh.pureedgesim.datacentersmanager.ComputingNode;
 import com.mechalikh.pureedgesim.scenariomanager.SimulationParameters;
-import com.mechalikh.pureedgesim.scenariomanager.SimulationParameters.TYPES; 
+import com.mechalikh.pureedgesim.scenariomanager.SimulationParameters.TYPES;
 import com.mechalikh.pureedgesim.simulationmanager.SimulationManager;
-import com.mechalikh.pureedgesim.tasksgenerator.Task;
-import com.mechalikh.pureedgesim.tasksgenerator.Task.Status;
-import com.mechalikh.pureedgesim.tasksorchestration.DefaultOrchestrator;
+import com.mechalikh.pureedgesim.taskgenerator.Task;
+import com.mechalikh.pureedgesim.taskgenerator.Task.Status;
+import com.mechalikh.pureedgesim.taskorchestrator.DefaultOrchestrator;
 
 import net.sourceforge.jFuzzyLogic.FIS;
 import src.com.fdtkit.fuzzy.data.Attribute;
@@ -101,12 +101,12 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 			}
 			return FuzzyLogic(architecture, task);
 		} else {
-		/*	super.findComputingNode(architecture, task);
-			SimLog.println("");
-			SimLog.println("Custom Orchestrator- Unknnown orchestration algorithm '" + algorithm
-					+ "', please check the simulation parameters file...");
-			// Cancel the simulation
-			Runtime.getRuntime().exit(0);*/
+			/*
+			 * super.findComputingNode(architecture, task); SimLog.println("");
+			 * SimLog.println("Custom Orchestrator- Unknnown orchestration algorithm '" +
+			 * algorithm + "', please check the simulation parameters file..."); // Cancel
+			 * the simulation Runtime.getRuntime().exit(0);
+			 */
 		}
 		return super.findComputingNode(architecture, task);
 	}
@@ -402,8 +402,8 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 			root = descisionTree.buildTree(d);
 		else
 			root2 = descisionTree.buildTree(d);
-		// Uncomment to print fuzzy rules
 
+		// To save fuzzy rules
 		String[] rulesArray = descisionTree.generateRules(root);
 		String rules = "";
 		for (String rule : rulesArray)
@@ -678,7 +678,11 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 			if (simulationManager.getScenario().getStringOrchAlgorithm().equals("FDT")) {
 				// if the task has been successfully executed, consider it a reward.
 				// otherwise,a punishment.
-				reinforcementRecieved(task, task.getStatus() == Status.SUCCESS, true);
+				reinforcementRecieved(task, task.getStatus() == Status.SUCCESS);
+
+				// place the application on another computing node if the task is failed.
+				if (task.getStatus() == Status.FAILED)
+					task.getEdgeDevice().setApplicationPlaced(false);
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -691,7 +695,7 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 	 * saved in a file and then used to generate the new tree, in order to get the
 	 * fuzzy rules, that are used in classification.
 	 */
-	public void reinforcementRecieved(Task task, boolean reinforcement, boolean modify) throws IOException {
+	public void reinforcementRecieved(Task task, boolean reinforcement) throws IOException {
 		// Get first rule from the array (the rule of stage 1)
 		String ruleToUpdate = ((String[]) ((CustomComputingNode) task.getEdgeDevice()).getMetaData())[0];
 		double reward = reinforcement ? 1 : 0;
@@ -705,6 +709,12 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 		if (task.getOffloadingDestination().getType() == TYPES.EDGE_DEVICE) {
 			// get the second rule from the array (the rule of stage 2)
 			ruleToUpdate = ((String[]) ((CustomComputingNode) task.getEdgeDevice()).getMetaData())[1];
+
+			// In stage 2 (see private int Stage2decisiontree(String[] architecture, Task
+			// task)), when no edge device is selected as offloading destination, we forward
+			// the task to the edge server, as a result the rule stays empty.
+			// It is therefore important to ensure the rule is not empty before updating the Q-Table
+			if(!"".equals(ruleToUpdate))
 			updateQTable(2, Q_Table2, ruleToUpdate, reward);
 		}
 	}
@@ -733,7 +743,7 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 			}
 		}
 		if (!found) {
-			// the Q values are set to optrimistic initial value of 1
+			// the Q values are set to optimistic initial value of 1
 			Q_table_row row = new Q_table_row(ruleToUpdate, 1, reinforcement);
 			q_Table.add(row);
 		}
