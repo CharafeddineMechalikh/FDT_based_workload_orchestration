@@ -10,7 +10,7 @@ public class Main{
 	private static String outputPath = "PureEdgeSim/MyWork/output/";
 
 	public static void main(String[] args) {
-        
+		
 		Simulation sim= new Simulation();
 		// changing the default output folder
 		sim.setCustomOutputFolder(outputPath);
@@ -21,7 +21,7 @@ public class Main{
 		// Load the custom devices class
 		sim.setCustomEdgeDataCenters(CustomComputingNode.class); 
 		
-		sim.setCustomEdgeOrchestrator(CustomOrchestrator.class);
+	    sim.setCustomEdgeOrchestrator(CustomOrchestrator.class);
 		// Launch the simulation
 		sim.launchSimulation();
 	}

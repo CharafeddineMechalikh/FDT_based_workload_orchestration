@@ -7,15 +7,15 @@
 		<container_size>20</container_size> <!--application/container size in kilobytes -->
 		<request_size>20</request_size> <!-- the offloading request that will be sent to the orchestrator and then to the device where the task will be offloaded in kilobytes -->
 		<results_size>20</results_size> <!-- the results of the offlaoded task in kilobytes -->
-		<task_length>1500</task_length> <!--MI: million instructions -->
+		<task_length>500</task_length> <!--MI: million instructions -->
 	</application>
 	<application name="Augmented reality">
 		<rate>10</rate>
 		<usage_percentage>30</usage_percentage>
 		<latency>1</latency>
 		<container_size>1500</container_size>
-		<request_size>1500</request_size>
-		<results_size>500</results_size>
+		<request_size>1500</request_size> <!--trasnfer at a rate of 2 megabits per second-->
+		<results_size>50</results_size>
 		<task_length>10000</task_length>
 	</application>
 	<application name="HEAVY_COMP_APP">
@@ -30,10 +30,10 @@
 	<application name="infotainement">
 		<rate>3</rate>
 		<usage_percentage>30</usage_percentage>
-		<latency>1</latency>
+		<latency>3</latency>
 		<container_size>1000</container_size>
 		<request_size>50</request_size>
 		<results_size>50</results_size>
-		<task_length>5000</task_length>
+		<task_length>1000</task_length>
 	</application>
 </applications>

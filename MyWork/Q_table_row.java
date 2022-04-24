@@ -11,6 +11,12 @@ public class Q_table_row {
 		this.Q_value = Q_value;
 	}
 
+	public Q_table_row(String rule, String numberOfReinforcements, String Q_value) {
+		this.rule = rule;
+		this.numberOfReinforcements = Double.parseDouble(numberOfReinforcements);
+		this.Q_value = Double.parseDouble(Q_value);
+	}
+
 	public String getRule() {
 		return rule;
 	}

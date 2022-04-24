@@ -64,9 +64,41 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 
 	public CustomOrchestrator(SimulationManager simulationManager) throws IOException {
 		super(simulationManager);
-		// reset dataset files
+		loadQTable(Q_Table, 1);
+		loadQTable(Q_Table2, 2);
+
 		UpdateFuzzyDecisionTree(Q_Table, 1);
 		UpdateFuzzyDecisionTree(Q_Table2, 2);
+	}
+
+	private void loadQTable(Vector<Q_table_row> q_Table, int stage) {
+		BufferedReader br = null;
+		try {
+			br = new BufferedReader(new FileReader("PureEdgeSim/MyWork/qTable" + stage + ".txt"));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+
+		String line = "";
+		Q_table_row row;
+		try {
+			while ((line = br.readLine()) != null) {
+				row = new Q_table_row(line.substring(0, line.indexOf("$")),
+						line.substring(line.indexOf("$") + 1, line.indexOf("!")),
+						line.substring(line.indexOf("!") + 1));
+				q_Table.add(row);
+			}
+		} catch (NumberFormatException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		try {
+			br.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	@Override
@@ -129,7 +161,7 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 					.getCurrentCpuUtilization();
 		}
 		nodeUsage /= SimulationParameters.NUM_OF_EDGE_DATACENTERS;
-		double[] edgeUsage = getDesCPUusage(nodeUsage * 50);
+		double[] edgeUsage = getDesCPUusage(nodeUsage);
 
 		// save the rule used for the classification of this task, in oder to use it
 		// later when updating the Q values
@@ -137,7 +169,7 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 				+ getWanUsageTerm(simulationManager.getNetworkModel().getWanUpUtilization()) + ","
 				+ getTaskLengthTerm(task.getLength()) + ","
 				+ (task.getEdgeDevice().getMobilityModel().isMobile() ? "high" : "low") + ","
-				+ getDesCPUUsageTerm(nodeUsage * 50);
+				+ getDesCPUUsageTerm(nodeUsage);
 
 		int action;
 		double random = new Random().nextFloat();
@@ -209,9 +241,10 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 		double max = -1;
 		int selected = -1;
 		String rule = "";
+		ComputingNode edgeDevice;
 		for (int i = 0; i < nodeList.size(); i++) {
-			if (offloadingIsPossible(task, nodeList.get(i), architecture)) {
-				ComputingNode edgeDevice = nodeList.get(i);
+			edgeDevice = nodeList.get(i);
+			if (offloadingIsPossible(task, edgeDevice, architecture)) {
 				double[] destcpu = getDesCPU(edgeDevice.getCurrentCpuUtilization() * 100);
 				double[] tasklength = getTaskLength(task.getLength());
 				double[] destremai = getDestRemain(edgeDevice);
@@ -223,8 +256,8 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 				// to save the rule used to offload this task, this rule will be used later when
 				// updating the Q values
 				// the rule will be stored in the task metadata object for easy access
-				rule = getDesCPUTerm(edgeDevice.getCurrentCpuUtilization() * 100) + ","
-						+ getTaskLengthTerm(task.getLength()) + "," + getDestRemainTerm(edgeDevice) + ","
+				rule = getDesCPUTerm(edgeDevice.getCurrentCpuUtilization()) + "," + getTaskLengthTerm(task.getLength())
+						+ "," + getDestRemainTerm(edgeDevice) + ","
 						+ getDestMobiTerm(edgeDevice, task.getEdgeDevice().getMobilityModel().isMobile());
 				// if the class = high, high = the expected success rate is high or the
 				// suitability of the device, so we should offload to this device
@@ -309,8 +342,10 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 	}
 
 	private String getLatTerm(double maxLatency) {
-		if (maxLatency < 20)
+		if (maxLatency < 2)
 			return "low";
+		if (maxLatency < 10)
+			return "medium";
 		else
 			return "high";
 	}
@@ -571,8 +606,10 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 	}
 
 	private double[] getLat(double maxLatency) {
-		if (maxLatency < 20)
+		if (maxLatency < 2)
 			return new double[] { 0.0, 0.0, 1.0 };
+		if (maxLatency < 10)
+			return new double[] { 0.0, 1.0, 0.0 };
 		return new double[] { 1.0, 0.0, 0.0 };
 	}
 
@@ -640,18 +677,19 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 		double min = -1;
 		double new_min;// selected with minimum affected tasks;
 		// get best selected for this task
+		ComputingNode node;
 		for (int i = 0; i < nodeList.size(); i++) {
-			if (offloadingIsPossible(task, nodeList.get(i), architecture)) {
+			node = nodeList.get(i);
+			if (offloadingIsPossible(task, node, architecture)) {
 				double latency = 1;
 				double energy = 1;
-				if (nodeList.get(i).getType() == SimulationParameters.TYPES.CLOUD) {
+				if (node.getType() == SimulationParameters.TYPES.CLOUD) {
 					latency = 1.6;
 					energy = 1.1;
-				} else if (nodeList.get(i).getType() == SimulationParameters.TYPES.EDGE_DEVICE) {
+				} else if (node.getType() == SimulationParameters.TYPES.EDGE_DEVICE) {
 					energy = 1.4;
 				}
-				new_min = (historyMap.get(i) + 1) * latency * energy * task.getLength()
-						/ nodeList.get(i).getTotalMipsCapacity();
+				new_min = (historyMap.get(i) + 1) * latency * energy * task.getLength() / node.getTotalMipsCapacity();
 				if (min == -1) { // if it is the first iteration
 					min = new_min;
 					// if this is the first time, set the first node as the
@@ -666,7 +704,6 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 		// affect the tasks to the selected node
 		if (selected != -1)
 			historyMap.put(selected, historyMap.get(selected) + 1);
-
 		return selected;
 	}
 
@@ -703,7 +740,7 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 			// Discount the reward by 10% if the offloading destination is a battery powered
 			// device, by doing so these devices will be avoided, unless the other possible
 			// actions are not suitable enough/risky
-			reward *= 0.85;
+			reward *= task.getOffloadingDestination().getEnergyModel().getBatteryLevelPercentage() / 100;
 		updateQTable(1, Q_Table, ruleToUpdate, reward);
 		// if the edge has been selected in stage 2
 		if (task.getOffloadingDestination().getType() == TYPES.EDGE_DEVICE) {
@@ -713,9 +750,10 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 			// In stage 2 (see private int Stage2decisiontree(String[] architecture, Task
 			// task)), when no edge device is selected as offloading destination, we forward
 			// the task to the edge server, as a result the rule stays empty.
-			// It is therefore important to ensure the rule is not empty before updating the Q-Table
-			if(!"".equals(ruleToUpdate))
-			updateQTable(2, Q_Table2, ruleToUpdate, reward);
+			// It is therefore important to ensure the rule is not empty before updating the
+			// Q-Table
+			if (!"".equals(ruleToUpdate))
+				updateQTable(2, Q_Table2, ruleToUpdate, reward);
 		}
 	}
 
@@ -734,9 +772,9 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 				// update Q-value
 				q_Table.get(i).incrementNumberOfReinforcements();
 
-				// set the threshold as 500 in order to deal with non-stationary Multi-Armed
+				// set the threshold as 50 in order to deal with non-stationary Multi-Armed
 				// Bandit problem
-				double k = Math.min(q_Table.get(i).getNumberOfReinforcements(), 50);
+				double k = Math.min(q_Table.get(i).getNumberOfReinforcements(), 500);
 				Q_value += 1 / k * (reinforcement - Q_value);
 				q_Table.get(i).setQ_value(Q_value);
 				break;
@@ -778,6 +816,18 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 		outstream.write(rules.getBytes());
 		outstream.close();
 
+		Vector<Q_table_row> Q_Table3 = Q_Table;
+		String row = "";
+		if (stage == 2)
+			Q_Table3 = this.Q_Table2;
+		file = new File("PureEdgeSim/MyWork/qTable" + stage + ".txt");
+		outstream = new DataOutputStream(new FileOutputStream(file, false));
+		for (int i = 0; i < Q_Table3.size(); i++) {
+			row = Q_Table3.get(i).getRule() + "$" + Q_Table3.get(i).getNumberOfReinforcements() + "!"
+					+ Q_Table3.get(i).getQ_value() + "\r\n";
+			outstream.write(row.getBytes());
+		}
+		outstream.close();
 	}
 
 	private String convertRule(String rule) {
@@ -797,8 +847,8 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 				max = q_Table.get(i).getQ_value();
 		}
 		double new_Q_value = row.getQ_value();
-		if (max != 0)
-			new_Q_value = 1 - ((max - row.getQ_value()) / max);
+		// if (max != 0)
+		// new_Q_value = 1 - ((max - row.getQ_value()) / max);
 		return fuzzify(new_Q_value);
 	}
 
@@ -815,6 +865,26 @@ public class CustomOrchestrator extends DefaultOrchestrator {
 		double medium = new_Q_value >= 0.5 ? (1 - new_Q_value) / 0.5 : new_Q_value / 0.5;
 		double low = new_Q_value <= 0.5 ? (0.5 - new_Q_value) / 0.5 : 0;
 		return high + " " + medium + " " + low;
+	}
+
+	protected void assignTaskToComputingNode(int computingNode, Task task) {
+
+		if (computingNode != -1) {
+
+			try {
+				checkComputingNode(nodeList.get(computingNode));
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
+			// Send this task to this computing node
+			task.setComputingNode(nodeList.get(computingNode));
+
+			simLog.deepLog(simulationManager.getSimulation().clock() + ": " + this.getClass() + " Task: " + task.getId()
+					+ " assigned to " + nodeList.get(computingNode).getType() + " vm: "
+					+ nodeList.get(computingNode).getId());
+
+		}
 	}
 
 }
